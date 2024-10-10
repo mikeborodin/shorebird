@@ -19,6 +19,7 @@ void main() {
     const flutterRevision = '83305b5088e6fe327fb3334a73ff190828d85713';
     const flutterVersion = '3.22.0';
     const displayName = 'shorebird-example';
+    const organizationId = 1234;
     const errorResponse = ErrorResponse(
       code: 'test_code',
       message: 'test message',
@@ -100,7 +101,7 @@ void main() {
     });
 
     group('getCurrentUser', () {
-      const user = User(
+      const user = PrivateUser(
         id: 123,
         email: 'tester@shorebird.dev',
         jwtIssuer: 'https://accounts.google.com',
@@ -725,7 +726,12 @@ void main() {
 
     group('createApp', () {
       test('makes the correct request', () async {
-        codePushClient.createApp(displayName: displayName).ignore();
+        codePushClient
+            .createApp(
+              organizationId: organizationId,
+              displayName: displayName,
+            )
+            .ignore();
         final request = verify(() => httpClient.send(captureAny()))
             .captured
             .single as http.BaseRequest;
@@ -743,7 +749,10 @@ void main() {
         );
 
         expect(
-          codePushClient.createApp(displayName: displayName),
+          codePushClient.createApp(
+            organizationId: organizationId,
+            displayName: displayName,
+          ),
           throwsA(
             isA<CodePushException>().having(
               (e) => e.message,
@@ -763,7 +772,10 @@ void main() {
         );
 
         expect(
-          codePushClient.createApp(displayName: displayName),
+          codePushClient.createApp(
+            organizationId: organizationId,
+            displayName: displayName,
+          ),
           throwsA(
             isA<CodePushException>().having(
               (e) => e.message,
@@ -787,7 +799,10 @@ void main() {
         );
 
         await expectLater(
-          codePushClient.createApp(displayName: displayName),
+          codePushClient.createApp(
+            organizationId: organizationId,
+            displayName: displayName,
+          ),
           completion(
             equals(
               isA<App>()
@@ -1221,7 +1236,7 @@ void main() {
 
     group('createUser', () {
       const userName = 'Jane Doe';
-      final user = User(
+      final user = PrivateUser(
         id: 1,
         email: 'tester@shorebird.dev',
         displayName: userName,
@@ -1910,6 +1925,56 @@ void main() {
           codePushClient.hostedUri
               .replace(path: '/api/v1/apps/$appId/patches/promote'),
         );
+      });
+    });
+
+    group('getOrganizationMemberships', () {
+      group('when response is not success', () {
+        setUp(() {
+          when(() => httpClient.send(any())).thenAnswer(
+            (_) async => http.StreamedResponse(
+              const Stream.empty(),
+              HttpStatus.failedDependency,
+            ),
+          );
+        });
+
+        test('throws exception', () async {
+          expect(
+            () async => codePushClient.getOrganizationMemberships(),
+            throwsA(
+              isA<CodePushException>().having(
+                (e) => e.message,
+                'message',
+                CodePushClient.unknownErrorMessage,
+              ),
+            ),
+          );
+        });
+      });
+
+      group('when response is successful', () {
+        late GetOrganizationsResponse response;
+        late OrganizationMembership membership;
+
+        setUp(() {
+          membership = OrganizationMembership(
+            role: OrganizationRole.admin,
+            organization: Organization.forTest(),
+          );
+          response = GetOrganizationsResponse(organizations: [membership]);
+          when(() => httpClient.send(any())).thenAnswer(
+            (_) async => http.StreamedResponse(
+              Stream.value(utf8.encode(json.encode(response))),
+              HttpStatus.ok,
+            ),
+          );
+        });
+
+        test('deserializes GetOrganizationMembershipsResponse', () async {
+          final memberships = await codePushClient.getOrganizationMemberships();
+          expect(memberships, equals([membership]));
+        });
       });
     });
 
